@@ -1,0 +1,28 @@
+# Runs the two rulers of the cleanup scripts (tests/). Each runs a script against fakes and exits 0
+# only when the script is correct AND every mutant of it is caught.
+#
+# `ubuntu-latest` on purpose, not `vars.CI_RUNNER`: this repository describes the cicd machine, and
+# its own tests must not depend on that machine being up. Public repository: hosted minutes are free.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  rulers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - name: Disk guard
+        run: node tests/disk-guard.test.mjs
+      - name: Container prune
+        run: node tests/container-prune.test.mjs
+      - name: Python files parse
+        run: python3 -c 'import ast, sys; [ast.parse(open(f).read(), f) for f in sys.argv[1:]]' dashboard/coletor.py watcher/vigia.py
+      - name: Shell scripts parse
+        run: for f in dashboard/instalar.sh watcher/instalar.sh cleanup/*.sh host/cicd-limpeza; do bash -n "$f"; done

@@ -1,0 +1,18 @@
+# The cicd dashboard's collector (docs/dashboard.md). One snapshot per run.
+[Unit]
+Description=cicd dashboard: collect runners, runs, history and machine numbers
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=painel
+Group=painel
+# The database stays in /var/lib/cicd-painel; only www/ is served.
+ExecStart=/usr/bin/python3 /opt/cicd-painel/coletor.py --token-file /etc/cicd-painel/token --dados /var/lib/cicd-painel --www /var/lib/cicd-painel/www
+TimeoutStartSec=5min
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/cicd-painel

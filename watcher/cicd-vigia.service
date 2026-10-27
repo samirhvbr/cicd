@@ -1,0 +1,21 @@
+# The cicd watcher (docs/watcher.md): runs the ShvIA CI here, with act,
+# and posts each job's result to GitHub as a commit status.
+[Unit]
+Description=cicd watcher: run the ShvIA CI on this machine and report to GitHub
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+# The same user the self-hosted runners use: `vm` jobs keep the environment they had (tools, caches,
+# passwordless sudo for apt), and the user is already in the docker group act needs.
+User=runner
+Group=runner
+ExecStart=/usr/bin/python3 /opt/cicd-vigia/vigia.py --config /etc/cicd-vigia/repos.json --token-file /etc/cicd-vigia/token --dados /srv/runners/_vigia --logs /var/lib/cicd-painel/www/vigia
+Restart=always
+RestartSec=60
+Environment=LANG=C.UTF-8 LC_ALL=C.UTF-8
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+# Removes Docker build cache unused for 48 hours. Measured on 13/10/2026 on `cicd`: 12.9 GB of build cache
+# (all reclaimable) on a 29 GB `/var/lib/docker` that also holds the images and every running job's
+# database volume. The weekly `/etc/cron.weekly/cicd-limpeza` keeps up to 7 days of cache, which is the
+# largest reclaimable item on the machine. A cache entry costs rebuild time when it is missing, never
+# correctness; `docker builder prune` leaves entries a running build uses.
+[Unit]
+Description=cicd: remove Docker build cache unused for 48 hours
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker builder prune -f --filter until=48h

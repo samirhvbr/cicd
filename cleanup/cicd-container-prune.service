@@ -1,0 +1,10 @@
+# Removes the shvia.* test containers older than a day (see cicd-container-prune.sh for the measurement).
+# Install the script first: sudo install -m 755 cleanup/cicd-container-prune.sh /usr/local/sbin/
+[Unit]
+Description=cicd: remove SHVIA test containers left running by cancelled CI jobs
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/cicd-container-prune.sh

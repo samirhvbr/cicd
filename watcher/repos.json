@@ -1,0 +1,50 @@
+{
+  "dono": "samirhvbr",
+  "paralelo": 3,
+  "url_logs": "http://100.64.100.240:8080/vigia",
+  "repos": {
+    "shvia-desktop": {
+      "modo": "conteiner",
+      "fora": [
+        "macos",
+        "windows-msvc"
+      ],
+      "mac": {
+        "host": "",
+        "usuario": "",
+        "dir": "ci",
+        "jobs": [
+          "macos"
+        ]
+      }
+    },
+    "shvia-web": {
+      "modo": "vm",
+      "ativo": false
+    },
+    "shvia-workspace": {
+      "modo": "vm",
+      "ativo": false
+    },
+    "shvia-code": {
+      "modo": "vm",
+      "ativo": false
+    },
+    "shvia-site": {
+      "modo": "vm",
+      "ativo": false
+    },
+    "shvia-ollama": {
+      "modo": "vm",
+      "ativo": false
+    },
+    "shvia-mobile": {
+      "modo": "conteiner",
+      "ativo": false
+    },
+    "shvia-bench": {
+      "modo": "conteiner",
+      "ativo": false
+    }
+  }
+}

@@ -1,0 +1,16 @@
+# Removes the Docker volumes no container uses. Each CI job starts MariaDB and pgvector as
+# service containers; the runner removes the containers but not their ANONYMOUS volumes, so
+# every run leaves two behind. Measured on 30/09/2026: 257 of them, 29.4 GB, had filled the
+# 29 GB `/var/lib/docker` in about two days, and the next job's MariaDB could not create its
+# data files ("error 28", no space) — every PR went red at "Initialize containers".
+#
+# `docker volume prune` only removes volumes no container references, and by default (Docker
+# 23+) only anonymous ones: a running job's database is in use and is never touched.
+[Unit]
+Description=cicd: remove Docker volumes left behind by finished CI jobs
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker volume prune -f

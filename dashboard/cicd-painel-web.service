@@ -1,0 +1,19 @@
+# The cicd dashboard's page: static files (index.html, estado.json, historico.json) on port 8080, office network
+# only. It serves www/ and nothing above it: the history database sits one folder up.
+[Unit]
+Description=cicd dashboard: serve the page on port 8080
+After=network-online.target
+
+[Service]
+User=painel
+Group=painel
+ExecStart=/usr/bin/python3 -m http.server 8080 --bind 0.0.0.0 --directory /var/lib/cicd-painel/www
+Restart=on-failure
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/cicd-painel
+
+[Install]
+WantedBy=multi-user.target

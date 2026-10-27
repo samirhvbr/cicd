@@ -1,0 +1,10 @@
+# Frees disk when `/var/lib/docker` is above 75% (see cicd-disk-guard.sh for the order and what it never touches).
+# Exit 1 means it is still above 85% after everything it may remove: `systemctl --failed` and the journal say so.
+[Unit]
+Description=cicd: free disk on /var/lib/docker when it is filling
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/cicd-disk-guard.sh

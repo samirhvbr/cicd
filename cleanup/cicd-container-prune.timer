@@ -1,0 +1,11 @@
+# Daily. The script only touches containers older than 24 h, so a run every few hours would not remove
+# more; and a job that is running now is never that old. `Persistent` runs a missed slot after a boot.
+[Unit]
+Description=cicd: prune SHVIA test containers older than a day, daily
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

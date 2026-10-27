@@ -1,0 +1,10 @@
+# Daily, ten minutes after the container prune so the two never overlap.
+[Unit]
+Description=cicd: prune Docker build cache daily
+
+[Timer]
+OnCalendar=*-*-* 03:40:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

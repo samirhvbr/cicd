@@ -1,0 +1,13 @@
+# Every 30 s. The lists go with ETags, and an unchanged one (304) costs nothing against the 5,000
+# requests an hour a token gets: measured on 28/09/2026, a quiet run made 10 requests, all 304.
+# A live run costs one request per snapshot, a finished one one request, once.
+[Unit]
+Description=cicd dashboard: run the collector every 30 seconds
+
+[Timer]
+OnBootSec=20s
+OnUnitActiveSec=30s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,11 @@
+# Hourly. At the rate measured on 30/09/2026 (257 volumes in about two days, ~15 GB a day)
+# a daily run would still let a busy day fill the 29 GB volume.
+[Unit]
+Description=cicd: prune orphaned CI volumes every hour
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+
+[Install]
+WantedBy=timers.target

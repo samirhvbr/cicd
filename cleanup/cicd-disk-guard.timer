@@ -1,0 +1,11 @@
+# Every 15 minutes. On 14/10/2026 `/var/lib/docker` went from 42% to 73% in under two hours, and on
+# 15/10 it was at 100%; the fastest existing prune is hourly (volumes), so the guard looks more often.
+[Unit]
+Description=cicd: check the Docker disk every 15 minutes
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=15min
+
+[Install]
+WantedBy=timers.target
