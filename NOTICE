@@ -1,0 +1,33 @@
+cicd — The CI machine of the samirhvbr fleet, as code and documentation: self-hosted GitHub Actions runners, a watcher that runs the same workflows with act when Actions is unavailable, a dashboard and the disk cleanup, with everything needed to build a new one from zero.
+Copyright (c) 2026 Samir Hanna Verza
+
+Licensed under the MIT License; see LICENSE.
+
+This file exists to hold third-party attribution that a license requires and
+that LICENSE itself does not carry. It must never contradict LICENSE: if the
+two disagree about the license or the copyright holder, that is a defect to be
+fixed, not a nuance to be interpreted.
+
+Third-party attribution
+-----------------------
+
+None yet.
+
+When an entry becomes necessary, it takes this shape — name of the component,
+why it is here, and the attribution clause quoted from its license:
+
+  Crawl4AI
+  --------
+  The `fetch_url` agent tool is served by a self-hosted Crawl4AI container
+  (deploy/crawl4ai/). Per the Crawl4AI license attribution clause:
+
+    This product includes software developed by UncleCode
+    (https://x.com/unclecode) as part of the Crawl4AI project
+    (https://github.com/unclecode/crawl4ai).
+
+  Crawl4AI is licensed under the Apache License 2.0 with an attribution
+  requirement. The Crawl4AI code itself is not distributed with the product; it
+  runs as an isolated service consumed over HTTP.
+
+(That example is the live entry in SHVIA-WEB/NOTICE, reproduced here as the
+format to follow. Delete it once this file has a real entry.)

@@ -1,0 +1,16 @@
+# Dependabot keeps the dependency surface this repository has from going
+# stale. A new repository starts with one workflow, release.yml, so the only
+# ecosystem listed is github-actions; add the project's own (npm, composer,
+# pip, cargo, ...) when it gets a package manager.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      # The fleet commit format is `X.Y.Z - description in English`, which
+      # Dependabot cannot produce. `prefix` is the closest it gets; a
+      # Dependabot PR is therefore squashed by hand with a conforming message.
+      prefix: "deps"
+    open-pull-requests-limit: 5

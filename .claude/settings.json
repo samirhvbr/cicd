@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_comment_profile": "THIS FILE DOES NOT CHOOSE THE MODEL, ON PURPOSE (24/09/2026 — repodocs ADR-027). No `model`, no `fallbackModel`, and nothing in `env` that steers one: no `ANTHROPIC_MODEL`, no `ANTHROPIC_DEFAULT_*_MODEL`, no `CLAUDE_CODE_SUBAGENT_MODEL`. The model is the user's choice, made with /model, and a subagent inherits it. Every pin this fleet carried outlived the model it named: `opus[1m]` held sessions on the previous Opus while the newer one was in the catalog, and `CLAUDE_CODE_SUBAGENT_MODEL=opus` sent every subagent to Opus 5 while the session ran 5.5. A pin here cannot outrank the account's server-managed settings anyway. The highest effortLevel a settings FILE accepts is 'xhigh' — writing 'max' here silently does nothing; use /effort max for a single session.",
+  "effortLevel": "high",
+  "permissions": {
+    "_comment": "Project permissions for cicd. The allow-list starts at reading, writing and git — NOTHING for your stack is granted yet. GRANTING A NEW PERMISSION IS THE OWNER'S ACT: it gets written into this file together with its reason and how to revert it, never applied silently. THE DENY-LIST ALWAYS BEATS THE ALLOW-LIST. ADR-019 GRANT (05/09/2026): the four read-only `gh` entries — `repo view`, `pr list`, `issue list`, `api repos/` — exist because the guest clause requires reading an upstream's language before we write into it, and a rule that prompts on every check is a rule that gets skipped. They read; they change nothing. To revert, delete those four lines: the clause then still applies, it just asks each time. `gh repo edit` and `gh repo delete` stay in `ask` and the deny-list still wins.",
+    "defaultMode": "plan",
+    "allow": [
+      "Read",
+      "Edit",
+      "Write",
+      "Bash(git pull:*)",
+      "Bash(git fetch:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh repo view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh api repos/:*)"
+    ],
+    "deny": [
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Read(./**/*.p8)",
+      "Read(./**/*.p12)",
+      "Read(./**/*.pfx)"
+    ],
+    "ask": [
+      "Bash(sudo:*)",
+      "Bash(rm -rf:*)",
+      "Bash(gh repo edit:*)",
+      "Bash(gh repo delete:*)",
+      "Bash(curl * | sh:*)",
+      "Bash(curl * | bash:*)",
+      "Bash(wget * | sh:*)",
+      "Bash(wget * | bash:*)"
+    ]
+  }
+}

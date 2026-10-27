@@ -1,0 +1,27 @@
+# Everything is versioned. The only exception is a SECRET.
+#
+# Rationale (EOP ADR-086, adopted fleet-wide): a directory that holds an open
+# question or a verdict is memory, not execution — keeping it out of git has
+# already caused real loss. Diff noise (counters, timestamps) is a
+# commit-granularity decision, not a reason to ignore a file.
+#
+# `.claude/` and `.continue/` are versioned ON PURPOSE. Do not add them here.
+# Any new exception beyond secrets requires an ADR in docs/decisions.md, never
+# a silent line in this file.
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+
+# Local agent overrides (may contain machine-specific paths and tokens)
+.claude/settings.local.json
+
+# OS noise
+.DS_Store
+Thumbs.db
