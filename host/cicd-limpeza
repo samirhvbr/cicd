@@ -1,0 +1,4 @@
+#!/bin/sh
+# Weekly CI cleanup: images, build cache and stopped containers older than 7 days.
+docker system prune -af --filter "until=168h" >/dev/null 2>&1
+docker builder prune -af --filter "until=168h" >/dev/null 2>&1
