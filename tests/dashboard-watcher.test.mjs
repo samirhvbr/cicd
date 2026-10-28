@@ -20,19 +20,24 @@
  *
  * The collector itself, twice, with no token (so no network), an empty runners folder, a `builds.json`
  * with every state the watcher writes, and a `historico.db` in the schema from before the watcher (no
- * `log` column), holding one GitHub run. It reads what the collector WROTE — `estado.json` and
+ * `log` column), holding one GitHub run; and act logs as the watcher writes them: one of a running build
+ * (a job mid-way, a job finished), one of a finished build (the reference for steps and length). It reads what the collector WROTE — `estado.json` and
  * `historico.json` — not the collector's text (the tautological-ruler trap of §15).
  *
  * ## The positive controls
  *
- * Seven mutants of the collector, each of which must be CAUGHT by the same checks:
+ * Eleven mutants of the collector, each of which must be CAUGHT by the same checks:
  *   1. `ignorado` and `conflito` recorded as runs;
  *   2. the watcher's ids stored positive (they can collide with GitHub's);
  *   3. a build waiting in the watcher's queue left out of the live view;
  *   4. the expected `assunto` red no longer marked expected;
  *   5. the "already recorded" check gone (the second pass records again);
  *   6. the migration gone (an existing database has no `log` column);
- *   7. the log left out of the export (the page cannot link the build).
+ *   7. the log left out of the export (the page cannot link the build);
+ *   8. the end of a job ("🏁") ignored in the live log (a finished job reads as running);
+ *   9. a build the watcher calls running, with no log yet, shown as running (it waits for a lock);
+ *  10. the typical length of a job not read from the finished logs (no bar, no "de ~X");
+ *  11. a minute read as a second in act's step durations.
  * If this ruler goes green with any of them, it is not a ruler.
  *
  * Run: `node tests/dashboard-watcher.test.mjs`   (0 = collector correct and every mutant caught)
@@ -58,6 +63,7 @@ const build = (id, repo, ref, evento, estado, inicio, fim, detalhe = null, log =
 
 // Newest first, as vigia.py writes it.
 const BUILDS = [
+  build(9, 'shvia-web', 'refs/pull/613/merge', 'pull_request', 'rodando', 0.3, null),
   build(8, 'shvia-desktop', 'refs/heads/master', 'push', 'na fila', 0.01, null),
   build(7, 'shvia-web', 'refs/pull/612/merge', 'pull_request', 'rodando', 0.2, null),
   build(6, 'shvia-web', 'refs/heads/master', 'push', 'interrompido', 3, 2.9),
@@ -67,6 +73,21 @@ const BUILDS = [
   build(2, 'shvia-desktop', 'refs/pull/151/merge', 'pull_request', 'conflito', 7, 7, 'mergeable=false'),
   build(1, 'shvia-desktop', 'refs/heads/master', 'push', 'ignorado', 8, 8, 'head when the watcher started'),
 ];
+// act's output as the watcher writes it, with the padding act puts after a job's name.
+const LOGS = {
+  'shvia-web-4-44444444.log': [
+    '[CI/test   ] ⭐ Run Set up job', '[CI/test   ]   ✅  Success - Set up job [1.5s]',
+    '[CI/test   ] ⭐ Run Main Testes', '[CI/test   ]   ✅  Success - Main Testes [2m30s]',
+    '[CI/test   ] ⭐ Run Complete job', '[CI/test   ]   ✅  Success - Complete job [500ms]',
+    '[CI/test   ] 🏁  Job succeeded',
+    '[CI/assunto] ⭐ Run Main Assunto', '[CI/assunto]   ❌  Failure - Main Assunto [1s]', '[CI/assunto] 🏁  Job failed',
+  ],
+  'shvia-web-7-77777777.log': [
+    '[CI/test   ] ⭐ Run Set up job', '[CI/test   ]   ✅  Success - Set up job [2s]', '[CI/test   ] ⭐ Run Main Testes',
+    'a line that is not act\'s',
+    '[CI/assunto] ⭐ Run Main Assunto', '[CI/assunto]   ❌  Failure - Main Assunto [1s]', '[CI/assunto] 🏁  Job failed',
+  ],
+};
 // What the history must hold for the watcher: run id → verdict. 1 and 2 ran nothing.
 const VEREDITOS = { '-3': 'success', '-4': 'success', '-5': 'failure', '-6': 'cancelled' };
 
@@ -98,6 +119,7 @@ function avaliar(coletor) {
   mkdirSync(join(www, 'vigia'), { recursive: true });
   mkdirSync(join(caso, 'runners'));
   writeFileSync(join(www, 'vigia', 'builds.json'), JSON.stringify({ gerado: iso(0), builds: BUILDS }));
+  for (const [nome, linhas] of Object.entries(LOGS)) writeFileSync(join(www, 'vigia', nome), linhas.join('\n') + '\n');
   bancoAntigo(join(caso, 'historico.db'));
   const problemas = [];
   for (const passada of [1, 2]) {
@@ -113,10 +135,19 @@ function avaliar(coletor) {
 
   // The live view.
   const vivos = Object.fromEntries(estado.vivos.map((v) => [v.id, v]));
-  if (JSON.stringify(Object.keys(vivos).sort()) !== JSON.stringify(['-7', '-8'])) problemas.push(`live runs [${Object.keys(vivos)}], expected [-7, -8]`);
+  if (JSON.stringify(Object.keys(vivos).sort()) !== JSON.stringify(['-7', '-8', '-9'])) problemas.push(`live runs [${Object.keys(vivos)}], expected [-7, -8, -9]`);
   if (vivos[-7] && (vivos[-7].status !== 'in_progress' || vivos[-7].pr !== 612 || vivos[-7].url !== 'vigia/shvia-web-7-77777777.log'))
     problemas.push(`the running build reads wrong: ${JSON.stringify({ status: vivos[-7].status, pr: vivos[-7].pr, url: vivos[-7].url })}`);
   if (vivos[-8] && (vivos[-8].status !== 'queued' || vivos[-8].branch !== 'master')) problemas.push(`the queued build reads wrong: ${vivos[-8].status} ${vivos[-8].branch}`);
+  if (vivos[-9] && vivos[-9].status !== 'queued') problemas.push(`a running build with no log yet reads ${vivos[-9].status}, expected queued (it waits for its turn)`);
+  // The running build's jobs, read from its live log, with the reference of build 4.
+  const jv = Object.fromEntries(((vivos[-7] || {}).jobs || []).map((j) => [j.nome, j]));
+  const teste = jv['CI/test'], assunto = jv['CI/assunto'];
+  if (!teste || teste.status !== 'in_progress' || JSON.stringify(teste.passo) !== JSON.stringify({ numero: 2, total: 3, nome: 'Testes' }))
+    problemas.push(`CI/test live reads wrong: ${JSON.stringify(teste && { status: teste.status, passo: teste.passo })}`);
+  if (!teste || !teste.tipico || teste.tipico.med !== 152) problemas.push(`CI/test typical length ${JSON.stringify(teste && teste.tipico)}, expected med 152 s`);
+  if (!assunto || assunto.status !== 'completed' || assunto.conclusao !== 'failure' || assunto.esperado !== true)
+    problemas.push(`CI/assunto live reads wrong: ${JSON.stringify(assunto && { status: assunto.status, conclusao: assunto.conclusao, esperado: assunto.esperado })}`);
   const vigia = estado.runners.find((r) => r.nome === 'cicd-vigia');
   if (!vigia || vigia.ocupado !== true || vigia.rodando !== 1) problemas.push(`the watcher's runner row is wrong: ${JSON.stringify(vigia)}`);
 
@@ -162,6 +193,10 @@ const resultado = {
   gravaDeNovo: avaliar(mutante('grava-de-novo', 'if (repo, run_id) in gravados:', 'if False:')),
   semMigracao: avaliar(mutante('sem-migracao', '    migrar(db)\n', '')),
   semLog: avaliar(mutante('sem-log', 'd["conclusoes"](ver), r[13]])', 'd["conclusoes"](ver)])')),
+  semFimDeJob: avaliar(mutante('sem-fim-de-job', 'elif msg.startswith("🏁"):', 'elif False:')),
+  semLogRodando: avaliar(mutante('sem-log-rodando', '        return None\n    return jobs', '        return {}\n    return jobs')),
+  semReferencia: avaliar(mutante('sem-referencia', '            if j["fim"] == "success":', '            if False:')),
+  minutoComoSegundo: avaliar(mutante('minuto-segundo', '"m": 60,', '"m": 1,')),
 };
 rmSync(DIR, { recursive: true, force: true });
 

@@ -540,7 +540,8 @@ footer { max-width: 1360px; margin: 0 auto; padding: 0 20px 28px; color: var(--m
       if (j.runner) nome.appendChild(el('span', 'muted', ' em ' + j.runner));
       linha.append(seloJob(j), nome);
       if (j.status === 'in_progress' && j.inicio) {
-        const passou = agora() - iso(j.inicio), tip = tipicos.get(run.repo + '|' + run.workflow + '|' + j.nome);
+        // A job of the watcher brings its typical length from the collector (read from its last logs).
+        const passou = agora() - iso(j.inicio), tip = tipicos.get(run.repo + '|' + run.workflow + '|' + j.nome) || j.tipico;
         linha.appendChild(el('span', 'num muted', dur(passou) + (tip ? ' de ~' + dur(tip.med) : '')));
         const pr = el('div', 'progresso'), i = el('i');
         let frac = null;
@@ -550,7 +551,7 @@ footer { max-width: 1360px; margin: 0 auto; padding: 0 20px 28px; color: var(--m
           pr.setAttribute('data-dica', 'Típico: ' + dur(tip.med) + ' (p90 ' + dur(tip.p90) + ', ' + plural(tip.n, 'execução verde', 'execuções verdes') + ')');
         } else if (j.passo && j.passo.total) frac = j.passo.numero / j.passo.total;
         if (frac != null) { i.style.width = Math.min(100, frac * 100).toFixed(1) + '%'; pr.appendChild(i); linha.appendChild(pr); }
-        if (j.passo) linha.appendChild(el('div', 'passo', 'passo ' + j.passo.numero + '/' + j.passo.total + ': ' + j.passo.nome));
+        if (j.passo) linha.appendChild(el('div', 'passo', 'passo ' + j.passo.numero + (j.passo.total ? '/' + j.passo.total : '') + ': ' + j.passo.nome));
       } else linha.appendChild(el('span'));
       b.appendChild(linha);
     });

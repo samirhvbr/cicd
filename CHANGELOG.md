@@ -9,6 +9,26 @@ improvised at `git commit` time.
 Bodies are narrative: what changed, why, and what was measured. This file is
 never rewritten.
 
+## 0.1.3 - Show each watcher job's step and expected length on the dashboard
+
+Once 0.1.1 was installed, the owner noticed what was missing: a GitHub job used to show its step,
+a progress bar and a time estimate, and a watcher build showed one line, "act", with the time since
+it was queued. The watcher writes act's output as it runs, one line per event, each prefixed with
+its job. That output already has everything the old view showed. A step starts with `⭐ Run`, ends
+with its duration, and the job ends with `🏁`.
+
+The collector now reads the live log of every running build. Each job of a build becomes its own
+line again, with its step and its state; a finished job gets its result, and shvia-web's
+`assunto` turns grey as it did. The total steps and the typical length of each job come from the
+repository's last five finished logs where that job succeeded. Each of those logs is read once and
+cached in `meta`. Measured on the machine's logs of 28/10: shvia-web's `CI/test` reads "passo
+16/20: Testes (php artisan test)", typical ~50 min over 4 green runs.
+
+Reading the log also fixed a wrong state. Build #29 had been "rodando" for 45 minutes with no log:
+it was waiting for #28 to release the lock on the `CI/test` job name. A build in that state is now
+shown queued. The ruler covers all of this with four more mutants, 11 in all, and all of them are
+caught. The page was rendered in headless Chrome against the machine's real logs, not only parsed.
+
 ## 0.1.2 - Update the machine from its own clone with deploy.sh
 
 Installing 0.1.1 showed why this was missing. The owner ran the documented `tar | ssh … instalar.sh`

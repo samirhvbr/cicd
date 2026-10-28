@@ -49,8 +49,21 @@ page did not know: on 28/10 it said *"Nada rodando, fila vazia"* while the watch
 pull requests, and the 13 runners read "livre" for good. The collector now reads the watcher's
 `www/vigia/builds.json` on every snapshot, with no token needed:
 
-- a build `rodando` or `na fila` is a live run of the workflow `cicd-vigia`, with one job `act`
-  linked to its log. Its progress bar measures against the repository's typical green build;
+- a running build is a live run of the workflow `cicd-vigia`, linked to its log, **with its jobs
+  read from that log**: act writes `[<workflow>/<job>] ⭐ Run <step>` when a step starts,
+  `✅ Success - <step> [<duration>]` when it ends and `🏁 Job succeeded|failed` when the job does.
+  So each job shows its step ("passo 16/20: Testes"), a progress bar and "Xm de ~Ym", as a GitHub
+  job did. The total steps and the typical length come from the same job in the repository's last
+  five finished logs where it succeeded. A job's length is the sum of its steps' durations, because
+  the log has no timestamps. Each finished log is read once and cached in `meta`;
+- a build the watcher marks `rodando` whose log does not exist yet is shown **queued**: it is
+  waiting for a same-named job of another build to release its lock (measured on 28/10: #29 sat
+  "rodando" for 45 minutes behind #28's `CI/test`), or for its clone. A `na fila` build is queued
+  too;
+- the log has no timestamps, so a build starts, for the page, at the first snapshot that saw its
+  log, within 30 s of the real start. A build already under way when the collector first sees it
+  (right after an install) starts at "now minus its finished steps", which is short of the truth
+  while a long step runs;
 - a finished build is recorded once: `passou` → success, `falhou`/`erro` → failure,
   `interrompido` → cancelled. `ignorado` and `conflito` ran nothing and are not recorded. Its jobs
   come from the build's `detalhe` (`provas=success, windows=failure`), and the expected-red rule
