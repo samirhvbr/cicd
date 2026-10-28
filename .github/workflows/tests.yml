@@ -27,4 +27,4 @@ jobs:
       - name: Python files parse
         run: python3 -c 'import ast, sys; [ast.parse(open(f).read(), f) for f in sys.argv[1:]]' dashboard/coletor.py watcher/vigia.py
       - name: Shell scripts parse
-        run: for f in dashboard/instalar.sh watcher/instalar.sh cleanup/*.sh host/cicd-limpeza; do bash -n "$f"; done
+        run: for f in deploy.sh dashboard/instalar.sh watcher/instalar.sh cleanup/*.sh host/cicd-limpeza; do bash -n "$f"; done

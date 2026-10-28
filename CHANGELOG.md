@@ -9,6 +9,27 @@ improvised at `git commit` time.
 Bodies are narrative: what changed, why, and what was measured. This file is
 never rewritten.
 
+## 0.1.2 - Update the machine from its own clone with deploy.sh
+
+Installing 0.1.1 showed why this was missing. The owner ran the documented `tar | ssh … instalar.sh`
+from the workstation's checkout, which was on master at 0.1.0. That reinstalled the old dashboard,
+and nothing said so: the page looked exactly as before. The fleet's other projects have a
+`deploy.sh` that runs on the server, from a clone, and says what it deployed. This repository now
+has one too.
+
+`sudo bash /srv/cicd/deploy.sh [--branch <name>]` fetches the branch and runs the rulers before
+installing anything; a red ruler installs nothing. It then runs the installers of the components
+that changed since the last deploy, recorded in `/var/lib/cicd-deploy/deployed`, and checks the
+dashboard by taking a snapshot. If an installer fails, it puts the previous deploy back. `--branch`
+lets a pull request be seen on the machine before its merge. It also leaves two things alone. The
+watcher stays as it is: the machine's `vigia.py` (sha256 `63169e60…`) is newer than this
+repository's (`04e3e376…`), because shvia-web #607 moved on after the copy, so installing ours would
+downgrade it. Restarting the watcher would also kill the builds running, so `--watcher` refuses
+while one runs. `host/` stays applied by hand. Measured before writing it: every other installed
+unit and script matches this repository, except two comments that still name shvia-web's old paths.
+The script is one block, so bash reads all of it before it checks out a new version of the file
+it is running.
+
 ## 0.1.1 - Show the watcher's builds on the dashboard
 
 On 28/10/2026 the dashboard said "Nada rodando, fila vazia" while the watcher was building three
