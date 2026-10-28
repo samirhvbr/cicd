@@ -9,6 +9,31 @@ improvised at `git commit` time.
 Bodies are narrative: what changed, why, and what was measured. This file is
 never rewritten.
 
+## 0.1.1 - Show the watcher's builds on the dashboard
+
+On 28/10/2026 the dashboard said "Nada rodando, fila vazia" while the watcher was building three
+shvia-web pull requests, and the owner only knew the CI was alive from the watcher's plain list at
+`/vigia/`. The page was not stuck: its collector ran every 30 s without an error. It read one source,
+GitHub Actions, and since the account was locked for billing on 26/10 every Actions run has zero jobs,
+so there was nothing to show and the 13 runners read "livre" for good. The watcher has written
+`www/vigia/builds.json` "for the dashboard" since it was installed on 27/10; nothing read it.
+
+The collector now reads it on every snapshot, with no token needed. A running or queued build is a
+live run of the workflow `cicd-vigia`, linked to its log; a finished one is recorded once in the
+history, with its jobs from the build's `detalhe` and shvia-web's expected `assunto` red applied; the
+watcher is listed with the runners and counted in the load samples. Its runs take negative ids, so they
+cannot collide with GitHub's run ids, and the page links them to `/vigia/<log>`. `runs` gains a `log`
+column, added to an existing database on the first snapshot. `vigia.py` is unchanged: it is still the
+copy of shvia-web #607.
+
+Measured against the machine's real `builds.json` of 15:05Z (29 builds): three live runs, 23 recorded
+(29 minus the three running, two `ignorado` and one `conflito`). `tests/dashboard-watcher.test.mjs` is
+new: it runs the collector twice against every state the watcher writes and an old-schema database,
+and catches seven mutants (recording what ran nothing, positive ids, dropping the queue, losing the
+expected red, recording twice, no migration, no log in the export). The three rulers pass. The page's
+script was parsed but not rendered in a browser here; the installed page is the check, and installing
+it is the owner's act (`bash dashboard/instalar.sh`).
+
 ## 0.1.0 - Document the cicd machine from an empty VM to a working one
 
 The fleet's CI machine gets its own public repository. Until today its runbook and its code lived

@@ -15,6 +15,7 @@
 | Numbers formatted with a comma (`10,00`), percentages missing | the runner's locale | the runner's `.env` must pin `LANG=C.UTF-8`, `LC_ALL=C.UTF-8`; [runners.md](runners.md#-the-locale) |
 | Two test jobs of one repository collide on a database port | fixed host ports in the workflow | `ports: - 3306`, read the port from `job.services`; [runners.md](runners.md#several-runners-for-one-repository) |
 | The dashboard shows the machine but no runs | the token is missing, empty, or does not reach the repository | `sudo test -s /etc/cicd-painel/token`; the page's warnings show `HTTP 404` per repository; [dashboard.md](dashboard.md#the-token) |
+| The dashboard says *"Nada rodando"* while `/vigia/` lists a build `rodando` | the dashboard installed is older than 0.1.1 and reads GitHub Actions only; or `builds.json` is unreadable to `painel` | `curl -s :8080/estado.json` must list `cicd-vigia` in `runners`; `bash dashboard/instalar.sh`; [dashboard.md](dashboard.md#how-it-is-built) |
 | A watcher status says to rebase | the pull request conflicts with its base; its merge ref is stale | rebase the branch; [watcher.md](watcher.md#what-act-does-differently-from-githubs-runner) |
 | `sudo` prints *"unable to resolve host"* | the hostname is not in `/etc/hosts` | [install.md §1](install.md#1-the-base-system) |
 | Docker images land on `/var` | Docker 29 keeps them in containerd's store | `/var/lib/containerd` must be its own volume; [install.md §2](install.md#2--the-data-volumes--before-docker) |

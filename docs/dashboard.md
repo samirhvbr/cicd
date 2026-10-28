@@ -43,6 +43,31 @@ writes its logs to `/var/lib/cicd-painel/www/vigia/`, which is why the page serv
 file (`gitHubUrl`). A new runner appears by itself; its runs appear once the token reaches its
 repository.
 
+**The watcher is the second source.** Since 26/10/2026 GitHub Actions hands no job to the runners
+(the account is locked for billing) and the CI runs in the [watcher](watcher.md). Until 0.1.1 the
+page did not know: on 28/10 it said *"Nada rodando, fila vazia"* while the watcher was building three
+pull requests, and the 13 runners read "livre" for good. The collector now reads the watcher's
+`www/vigia/builds.json` on every snapshot, with no token needed:
+
+- a build `rodando` or `na fila` is a live run of the workflow `cicd-vigia`, with one job `act`
+  linked to its log. Its progress bar measures against the repository's typical green build;
+- a finished build is recorded once: `passou` → success, `falhou`/`erro` → failure,
+  `interrompido` → cancelled. `ignorado` and `conflito` ran nothing and are not recorded. Its jobs
+  come from the build's `detalhe` (`provas=success, windows=failure`), and the expected-red rule
+  below applies to them;
+- the watcher is listed with the runners as `cicd-vigia`, busy while it builds, and its running
+  builds count in the load samples.
+
+Its runs share the tables with GitHub's under **negative ids** (`-<build id>`). A GitHub run id is
+positive, so the two cannot collide, and the page links a negative id to `/vigia/<log>` instead of
+github.com. The `log` column of `runs` exists for these runs only; an older database gets it on the
+first snapshot.
+
+**What the watcher's numbers cannot say:** it keeps no time per job, so each job of a build carries
+the whole build's start and end. Runner hours and job durations of a watcher build are therefore
+approximations (act runs a build's independent jobs in parallel, so the error is small but
+present), and there is no queue wait: the build's start is when it was queued.
+
 **The history.** GitHub keeps no cheap history to ask again, so the collector records every
 finished run once, with its jobs: runner, result, and when each was queued, started and finished.
 It starts on 28/09/2026, the day the first runner went live. Once an hour a paginated pass records

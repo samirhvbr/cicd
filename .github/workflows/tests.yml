@@ -22,6 +22,8 @@ jobs:
         run: node tests/disk-guard.test.mjs
       - name: Container prune
         run: node tests/container-prune.test.mjs
+      - name: Dashboard reads the watcher
+        run: node tests/dashboard-watcher.test.mjs
       - name: Python files parse
         run: python3 -c 'import ast, sys; [ast.parse(open(f).read(), f) for f in sys.argv[1:]]' dashboard/coletor.py watcher/vigia.py
       - name: Shell scripts parse
