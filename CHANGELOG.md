@@ -9,6 +9,15 @@ improvised at `git commit` time.
 Bodies are narrative: what changed, why, and what was measured. This file is
 never rewritten.
 
+## 0.1.4 - Show a job act skips as skipped, not as running
+
+On 31/10/2026 shvia-desktop's master build #90 showed `Platforms/macOS` and `Platforms/Windows MSVC`
+as running, with no step. They would have stayed that way until the build ended. act does not run a
+macOS or Windows job on this machine. For each one it writes a single line, `🚧  Skipping unsupported
+platform`, and never the `🏁` the collector waited for. That line now ends the job as `skipped`,
+which the page shows grey, like a GitHub job whose `if:` was false. The ruler has a twelfth mutant
+for it, and it is caught.
+
 ## 0.1.3 - Show each watcher job's step and expected length on the dashboard
 
 Once 0.1.1 was installed, the owner noticed what was missing: a GitHub job used to show its step,

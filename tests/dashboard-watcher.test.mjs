@@ -26,7 +26,7 @@
  *
  * ## The positive controls
  *
- * Eleven mutants of the collector, each of which must be CAUGHT by the same checks:
+ * Twelve mutants of the collector, each of which must be CAUGHT by the same checks:
  *   1. `ignorado` and `conflito` recorded as runs;
  *   2. the watcher's ids stored positive (they can collide with GitHub's);
  *   3. a build waiting in the watcher's queue left out of the live view;
@@ -37,7 +37,8 @@
  *   8. the end of a job ("🏁") ignored in the live log (a finished job reads as running);
  *   9. a build the watcher calls running, with no log yet, shown as running (it waits for a lock);
  *  10. the typical length of a job not read from the finished logs (no bar, no "de ~X");
- *  11. a minute read as a second in act's step durations.
+ *  11. a minute read as a second in act's step durations;
+ *  12. a job act skips (macOS, Windows: "🚧 Skipping unsupported platform") read as running forever.
  * If this ruler goes green with any of them, it is not a ruler.
  *
  * Run: `node tests/dashboard-watcher.test.mjs`   (0 = collector correct and every mutant caught)
@@ -85,6 +86,7 @@ const LOGS = {
   'shvia-web-7-77777777.log': [
     '[CI/test   ] ⭐ Run Set up job', '[CI/test   ]   ✅  Success - Set up job [2s]', '[CI/test   ] ⭐ Run Main Testes',
     'a line that is not act\'s',
+    '[Platforms/macOS (clippy + test)] 🚧  Skipping unsupported platform -- Try running with `-P macos-latest=...`',
     '[CI/assunto] ⭐ Run Main Assunto', '[CI/assunto]   ❌  Failure - Main Assunto [1s]', '[CI/assunto] 🏁  Job failed',
   ],
 };
@@ -146,6 +148,9 @@ function avaliar(coletor) {
   if (!teste || teste.status !== 'in_progress' || JSON.stringify(teste.passo) !== JSON.stringify({ numero: 2, total: 3, nome: 'Testes' }))
     problemas.push(`CI/test live reads wrong: ${JSON.stringify(teste && { status: teste.status, passo: teste.passo })}`);
   if (!teste || !teste.tipico || teste.tipico.med !== 152) problemas.push(`CI/test typical length ${JSON.stringify(teste && teste.tipico)}, expected med 152 s`);
+  const mac = jv['Platforms/macOS (clippy + test)'];
+  if (!mac || mac.status !== 'completed' || mac.conclusao !== 'skipped')
+    problemas.push(`a job act skips reads ${JSON.stringify(mac && { status: mac.status, conclusao: mac.conclusao })}, expected completed/skipped`);
   if (!assunto || assunto.status !== 'completed' || assunto.conclusao !== 'failure' || assunto.esperado !== true)
     problemas.push(`CI/assunto live reads wrong: ${JSON.stringify(assunto && { status: assunto.status, conclusao: assunto.conclusao, esperado: assunto.esperado })}`);
   const vigia = estado.runners.find((r) => r.nome === 'cicd-vigia');
@@ -197,6 +202,7 @@ const resultado = {
   semLogRodando: avaliar(mutante('sem-log-rodando', '        return None\n    return jobs', '        return {}\n    return jobs')),
   semReferencia: avaliar(mutante('sem-referencia', '            if j["fim"] == "success":', '            if False:')),
   minutoComoSegundo: avaliar(mutante('minuto-segundo', '"m": 60,', '"m": 1,')),
+  puladoRodando: avaliar(mutante('pulado-rodando', 'j["fim"] = "skipped"', 'pass')),
 };
 rmSync(DIR, { recursive: true, force: true });
 

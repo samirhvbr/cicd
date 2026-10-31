@@ -472,6 +472,10 @@ def ler_log_act(caminho):
                     j["passo"] = msg[len("⭐ Run "):].removeprefix("Main ")
                 elif msg.startswith("🏁"):
                     j["fim"] = "success" if "succeeded" in msg else "failure"
+                elif msg.startswith("🚧") and "Skipping unsupported platform" in msg:
+                    # A macOS or Windows job: act writes this one line and never a 🏁 for it, so without
+                    # this the job read "running" until the build ended (shvia-desktop, 31/10/2026).
+                    j["fim"] = "skipped"
                 elif msg.startswith(("✅", "❌")):
                     d = DURACAO_GO.search(msg)
                     if d:
