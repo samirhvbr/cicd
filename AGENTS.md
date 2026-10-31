@@ -68,7 +68,7 @@ rename it to `CICD_NO_HOOK`.
 - **Runs:** on the cicd machine only, installed by each component's `instalar.sh` or the
   `install` lines in its page ([docs/install.md](docs/install.md)). Nothing here runs as a
   service on a workstation.
-- **Tests run with:** `node tests/disk-guard.test.mjs && node tests/container-prune.test.mjs`
+- **Tests run with:** `node tests/disk-guard.test.mjs && node tests/container-prune.test.mjs && node tests/dashboard-watcher.test.mjs`
   (each exits 0 only when the script is correct and every mutant is caught). The permission to
   run them is not in `.claude/settings.json` yet — granting it is the owner's act.
 - **Never touch:** the machine itself without the owner's go-ahead — registering a runner,

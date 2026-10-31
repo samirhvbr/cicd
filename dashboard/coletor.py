@@ -19,6 +19,10 @@ names its repository (`gitHubUrl`), so registering a runner here is all it takes
 repository on the dashboard. The token must reach it too (see the runbook): a repository the
 token does not cover shows up with that error, never as an empty chart.
 
+The watcher (`cicd-vigia`, docs/watcher.md) is the second source: it builds with `act` what GitHub Actions
+no longer hands to the runners, and writes its builds to `www/vigia/builds.json`. Its running and queued
+builds join the live snapshot, and its finished ones the history, as runs of the workflow `cicd-vigia`.
+
 Standard library only, on purpose: the machine is a CI runner, and a dashboard that needs its
 own dependency tree would be one more thing that breaks with the jobs it watches.
 
@@ -36,6 +40,7 @@ import calendar
 import glob
 import json
 import os
+import re
 import sqlite3
 import time
 import urllib.error
@@ -67,7 +72,7 @@ ESQUEMA = """
 CREATE TABLE IF NOT EXISTS runs (
   repo TEXT NOT NULL, id INTEGER NOT NULL, tentativa INTEGER NOT NULL,
   workflow TEXT, evento TEXT, branch TEXT, pr INTEGER, ator TEXT, titulo TEXT, conclusao TEXT,
-  criado INTEGER, inicio INTEGER, fim INTEGER,
+  criado INTEGER, inicio INTEGER, fim INTEGER, log TEXT,
   PRIMARY KEY (repo, id, tentativa));
 CREATE TABLE IF NOT EXISTS jobs (
   id INTEGER PRIMARY KEY, repo TEXT NOT NULL, run_id INTEGER NOT NULL, tentativa INTEGER NOT NULL,
@@ -78,6 +83,20 @@ CREATE TABLE IF NOT EXISTS amostras (
   ts INTEGER PRIMARY KEY, carga REAL, memoria REAL, rodando INTEGER, fila INTEGER);
 CREATE TABLE IF NOT EXISTS meta (chave TEXT PRIMARY KEY, valor TEXT);
 """
+# A GitHub run fills every column but `log`, which only the watcher's runs have.
+COLUNAS_RUNS = "repo, id, tentativa, workflow, evento, branch, pr, ator, titulo, conclusao, criado, inicio, fim"
+
+# The watcher (docs/watcher.md) runs the CI with `act` while GitHub Actions hands no job to the runners: the
+# account was locked for billing on 26/10/2026, and from then on every Actions run had zero jobs, so this page
+# showed "nothing running" while the watcher was building three pull requests. It writes its builds to
+# `<www>/vigia/builds.json`. Its runs go in the same tables as GitHub's under the workflow name `cicd-vigia`,
+# with NEGATIVE ids: a GitHub id is positive, so the two can never collide, and the page tells them apart by
+# the sign.
+VIGIA = "cicd-vigia"
+# `ignorado` (the head when the watcher first saw a repository) and `conflito` (no merge ref) ran nothing.
+VIGIA_CONCLUSAO = {"passou": "success", "falhou": "failure", "erro": "failure", "interrompido": "cancelled"}
+# The watcher keeps no per-job record of a build it did not finish; such a build counts as one job.
+VIGIA_JOB = "act"
 
 
 def iso(t):
@@ -382,13 +401,202 @@ def gravar(db, run, jobs, nomes_locais):
             inicio = min(inicios) if inicios else None
             fim = max(fins) if fins else None
             conclusao, verbo = None, "IGNORE"
-        db.execute(f"INSERT OR {verbo} INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (
+        db.execute(f"INSERT OR {verbo} INTO runs ({COLUNAS_RUNS}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (
             repo, run["id"], t, run["workflow"], run["evento"], run["branch"], run["pr"], run["ator"],
             run["titulo"], conclusao, epoca(run["criado"]), inicio, fim))
     for j in resumidos:
         db.execute("INSERT OR REPLACE INTO jobs VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (
             j["id"], repo, run["id"], j["tentativa"], j["nome"], j["runner"], int(j["aqui"]),
             j["conclusao"], int(j["esperado"]), epoca(j["criado"]), epoca(j["inicio"]), epoca(j["fim"])))
+
+
+def migrar(db):
+    """A database from before the watcher has no `log` column; CREATE TABLE IF NOT EXISTS does not add it."""
+    if "log" not in {c[1] for c in db.execute("PRAGMA table_info(runs)")}:
+        db.execute("ALTER TABLE runs ADD COLUMN log TEXT")
+
+
+def ref_do_vigia(ref):
+    """`refs/pull/N/merge` → (N, None); `refs/heads/x` → (None, "x")."""
+    partes = (ref or "").split("/")
+    if len(partes) == 4 and partes[:2] == ["refs", "pull"] and partes[2].isdigit():
+        return int(partes[2]), None
+    if (ref or "").startswith("refs/heads/"):
+        return None, ref[len("refs/heads/"):]
+    return None, ref
+
+
+def log_do_vigia(b):
+    """The log's name, the one vigia.py gives it when the build starts (`builds.json` names it only at the end)."""
+    return b.get("log") or f"{b['repo'].split('/')[-1]}-{b['id']}-{(b.get('sha') or '')[:8]}.log"
+
+
+def jobs_do_vigia(b, conclusao):
+    """The jobs of a finished build, from `detalhe` (`provas=success, windows=failure`): the only per-job
+    record the watcher keeps. A job it could not read is `?`, which it posts as a failure, so it is one
+    here too. A build that ended before its jobs (`erro`, `interrompido`) is one job, so it still counts."""
+    jobs = []
+    if b.get("estado") in ("passou", "falhou"):
+        for parte in (b.get("detalhe") or "").split(","):
+            nome, igual, resultado = parte.strip().partition("=")
+            if igual and nome:
+                jobs.append((nome, resultado if resultado in ("success", "failure", "skipped", "cancelled") else "failure"))
+    return jobs or [(VIGIA_JOB, conclusao)]
+
+
+# act's output, as the watcher writes it: `[<workflow>/<job> <padding>] <message>`. A step starts with
+# "⭐ Run <step>", ends with "✅  Success - <step> [<Go duration>]" (or ❌ Failure), and the job ends with
+# "🏁  Job succeeded" or "🏁  Job failed". The watcher keeps no timestamps, so the time a job usually takes
+# is the sum of its steps' durations.
+LINHA_ACT = re.compile(r"^\[([^\]]+)\] (.*)$")
+DURACAO_GO = re.compile(r"\[((?:\d+(?:\.\d+)?(?:h|ms|µs|us|ns|m|s))+)\]\s*$")
+PARTE_GO = re.compile(r"(\d+(?:\.\d+)?)(h|ms|µs|us|ns|m|s)")
+UNIDADE_GO = {"h": 3600, "m": 60, "s": 1, "ms": 1e-3, "µs": 1e-6, "us": 1e-6, "ns": 1e-9}
+# How many finished logs of a repository are read for the typical steps and length of its jobs.
+LOGS_DE_REFERENCIA = 5
+
+
+def ler_log_act(caminho):
+    """Per job of an act log: the steps started, the one running, how it ended, and its steps' total time."""
+    jobs = {}
+    try:
+        with open(caminho, encoding="utf-8", errors="replace") as f:
+            for linha in f:
+                m = LINHA_ACT.match(linha)
+                if not m:
+                    continue
+                nome, msg = m.group(1).strip(), m.group(2).strip()
+                j = jobs.setdefault(nome, {"passos": 0, "passo": None, "fim": None, "segundos": 0.0})
+                if msg.startswith("⭐ Run "):
+                    j["passos"] += 1
+                    j["passo"] = msg[len("⭐ Run "):].removeprefix("Main ")
+                elif msg.startswith("🏁"):
+                    j["fim"] = "success" if "succeeded" in msg else "failure"
+                elif msg.startswith("🚧") and "Skipping unsupported platform" in msg:
+                    # A macOS or Windows job: act writes this one line and never a 🏁 for it, so without
+                    # this the job read "running" until the build ended (shvia-desktop, 31/10/2026).
+                    j["fim"] = "skipped"
+                elif msg.startswith(("✅", "❌")):
+                    d = DURACAO_GO.search(msg)
+                    if d:
+                        j["segundos"] += sum(float(n) * UNIDADE_GO[u] for n, u in PARTE_GO.findall(d.group(1)))
+    except OSError:
+        return None
+    return jobs
+
+
+def referencia_do_vigia(db, builds, repo, pasta_logs):
+    """The typical steps and length of each job of a repository, from its last finished logs, read only for
+    the jobs that succeeded there. A finished log never changes, so each is read once and kept in `meta`."""
+    amostras = {}
+    lidos = 0
+    for b in builds:   # newest first
+        if lidos == LOGS_DE_REFERENCIA:
+            break
+        if b.get("repo") != repo or not b.get("log") or b.get("estado") not in ("passou", "falhou"):
+            continue
+        chave = "act:" + b["log"]
+        linha = db.execute("SELECT valor FROM meta WHERE chave = ?", (chave,)).fetchone()
+        if linha:
+            jobs = json.loads(linha[0])
+        else:
+            jobs = ler_log_act(os.path.join(pasta_logs, b["log"]))
+            if jobs is None:
+                continue
+            db.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (chave, json.dumps(jobs)))
+        lidos += 1
+        for nome, j in jobs.items():
+            if j["fim"] == "success":
+                amostras.setdefault(nome, []).append((j["passos"], j["segundos"]))
+    ref = {}
+    for nome, v in amostras.items():
+        passos = sorted(p for p, _ in v)
+        segundos = sorted(s for _, s in v)
+        ref[nome] = {"passos": passos[len(passos) // 2], "med": segundos[len(segundos) // 2],
+                     "p90": segundos[min(len(segundos) - 1, int(len(segundos) * 0.9))], "n": len(v)}
+    return ref
+
+
+def vivos_do_vigia(db, builds, pasta_logs, url_logs, agora):
+    """The watcher's builds running or waiting, as live runs of the page, each job with its step and its
+    typical length. A build the watcher calls `rodando` but whose log does not exist yet is waiting for its
+    turn (a same-named job of another build holds the lock, or the clone is being made): it is shown queued.
+    act's log has no timestamps, so a build starts, for the page, when the first snapshot that saw its log
+    says it did."""
+    vivos, referencias, vistos = [], {}, set()
+    for b in builds:
+        if b.get("estado") not in ("rodando", "na fila"):
+            continue
+        pr, branch = ref_do_vigia(b.get("ref"))
+        nome_log = log_do_vigia(b)
+        jobs_log = ler_log_act(os.path.join(pasta_logs, nome_log)) if b["estado"] == "rodando" else None
+        run = {"repo": b["repo"], "id": -b["id"], "tentativa": 1, "workflow": VIGIA, "titulo": None,
+               "branch": branch, "evento": b.get("evento"), "pr": pr, "ator": None, "status": "queued",
+               "conclusao": None, "criado": b.get("inicio"), "inicio": None, "atualizado": None, "url": url_logs,
+               "jobs": []}
+        if jobs_log is None:
+            run["jobs"].append({"id": None, "tentativa": 1, "nome": VIGIA_JOB, "status": "queued", "conclusao": None,
+                                "runner": VIGIA, "aqui": True, "esperado": False, "criado": b.get("inicio"),
+                                "inicio": None, "fim": None, "passo": None, "url": url_logs})
+            vivos.append(run)
+            continue
+        chave = f"vigia-inicio:{b['id']}"
+        vistos.add(chave)
+        linha = db.execute("SELECT valor FROM meta WHERE chave = ?", (chave,)).fetchone()
+        if linha is None:
+            # First sight of a build already under way (the collector was just installed, or was off): its
+            # longest job's finished steps say how long it has been running, at least.
+            t0 = int(agora - max((j["segundos"] for j in jobs_log.values()), default=0))
+            db.execute("INSERT INTO meta VALUES (?, ?)", (chave, str(t0)))
+        else:
+            t0 = float(linha[0])
+        inicio = iso(t0)
+        if b["repo"] not in referencias:
+            referencias[b["repo"]] = referencia_do_vigia(db, builds, b["repo"], pasta_logs)
+        ref = referencias[b["repo"]]
+        run.update(status="in_progress", inicio=inicio, url=url_logs + nome_log)
+        for nome, j in jobs_log.items():
+            r = ref.get(nome)
+            run["jobs"].append({
+                "id": None, "tentativa": 1, "nome": nome, "status": "completed" if j["fim"] else "in_progress",
+                "conclusao": j["fim"], "runner": VIGIA, "aqui": True,
+                "esperado": esperado(b["repo"], b.get("evento"), nome.split("/")[-1], j["fim"]),
+                "criado": inicio, "inicio": inicio, "fim": None, "url": run["url"],
+                "passo": {"numero": j["passos"], "total": r and max(r["passos"], j["passos"]), "nome": j["passo"]}
+                if j["passo"] else None,
+                "tipico": r and {"med": r["med"], "p90": r["p90"], "n": r["n"]},
+            })
+        vivos.append(run)
+    # A build no longer running leaves its start behind.
+    for (chave,) in db.execute("SELECT chave FROM meta WHERE chave LIKE 'vigia-inicio:%'").fetchall():
+        if chave not in vistos:
+            db.execute("DELETE FROM meta WHERE chave = ?", (chave,))
+    return vivos
+
+
+def gravar_vigia(db, builds):
+    """Records the watcher's finished builds not recorded yet; returns how many. Each job carries the build's
+    times: the watcher keeps no time per job."""
+    gravados = {r for r in db.execute("SELECT repo, id FROM runs WHERE id < 0")}
+    n = 0
+    for b in builds:
+        conclusao = VIGIA_CONCLUSAO.get(b.get("estado"))
+        if conclusao is None or not b.get("fim") or not isinstance(b.get("id"), int):
+            continue
+        repo, run_id = b["repo"], -b["id"]
+        if (repo, run_id) in gravados:
+            continue
+        pr, branch = ref_do_vigia(b.get("ref"))
+        evento, inicio, fim = b.get("evento"), epoca(b.get("inicio")), epoca(b.get("fim"))
+        db.execute(f"INSERT INTO runs ({COLUNAS_RUNS}, log) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
+            repo, run_id, 1, VIGIA, evento, branch, pr, None, None, conclusao, inicio, inicio, fim, b.get("log")))
+        for i, (nome, c) in enumerate(jobs_do_vigia(b, conclusao)):
+            db.execute("INSERT OR REPLACE INTO jobs VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (
+                run_id * 1000 - i, repo, run_id, 1, nome, VIGIA, 1, c, int(esperado(repo, evento, nome, c)),
+                inicio, inicio, fim))
+        gravados.add((repo, run_id))
+        n += 1
+    return n
 
 
 class Dicionario:
@@ -408,13 +616,13 @@ class Dicionario:
 def exportar(db, agora):
     """The runs of the last 90 days with at least one job that ran here, and those jobs.
 
-    runs: [id, repo, workflow, evento, ator, branch, pr, tentativa, criado, inicio, fim, veredito]
+    runs: [id, repo, workflow, evento, ator, branch, pr, tentativa, criado, inicio, fim, veredito, log]
     jobs: [run (index in runs), nome, runner, conclusao, esperado, criado, inicio, fim]
     Strings are indices into `dicionarios`; times are Unix seconds. The verdict counts only the
-    jobs that ran here."""
+    jobs that ran here. `log` is the watcher's log of its runs (negative ids), null for GitHub's."""
     limite = agora - EXPORTA_S
     runs = db.execute("""
-        SELECT repo, id, tentativa, workflow, evento, branch, pr, ator, titulo, conclusao, criado, inicio, fim
+        SELECT repo, id, tentativa, workflow, evento, branch, pr, ator, titulo, conclusao, criado, inicio, fim, log
         FROM runs WHERE COALESCE(inicio, criado) >= ? ORDER BY COALESCE(inicio, criado), id""", (limite,)).fetchall()
     jobs = {}
     for j in db.execute("""
@@ -431,7 +639,7 @@ def exportar(db, agora):
         i = len(saida_runs)
         ver = veredito(r[9], [{"conclusao": j[5], "esperado": bool(j[6])} for j in js])
         saida_runs.append([r[1], d["repos"](r[0]), d["workflows"](r[3]), d["eventos"](r[4]), d["atores"](r[7]),
-                           d["branches"](r[5]), r[6], r[2], r[10], r[11], r[12], d["conclusoes"](ver)])
+                           d["branches"](r[5]), r[6], r[2], r[10], r[11], r[12], d["conclusoes"](ver), r[13]])
         titulos.append(r[8] or "")
         for j in js:
             saida_jobs.append([i, d["jobs"](j[3]), d["runners"](j[4]), d["conclusoes"](j[5]), j[6], j[7], j[8], j[9]])
@@ -538,7 +746,10 @@ def main():
 
     db = sqlite3.connect(os.path.join(a.dados, "historico.db"))
     db.executescript(ESQUEMA)
-    gravou = 0
+    migrar(db)
+    # The watcher's builds need no token: they are a file on this machine.
+    builds = ler_json(os.path.join(a.www, "vigia", "builds.json"), {}).get("builds") or []
+    gravou = gravar_vigia(db, builds)
     por_repo = {}
     if token and alvos:
         arq_etags = os.path.join(a.dados, "etags.json")
@@ -581,11 +792,19 @@ def main():
             estado["runners"].append({"nome": r["nome"], "repo": r["repo"] or r["org"], "status": None,
                                       "ocupado": None, "local": True})
     estado["runners"].sort(key=lambda x: (x["repo"] or "", x["nome"] or ""))
+    vivos_vigia = vivos_do_vigia(db, builds, os.path.join(a.www, "vigia"), "vigia/", agora)
+    estado["vivos"] += vivos_vigia
+    vigia_rodando = sum(1 for r in vivos_vigia if r["status"] == "in_progress")
+    if builds:
+        # Not a GitHub runner: the watcher, which runs every repository it is switched on for. Listed with
+        # the runners so its occupation and the page's "runners busy" count it.
+        estado["runners"].append({"nome": VIGIA, "repo": None, "status": "online", "ocupado": vigia_rodando > 0,
+                                  "local": True, "rodando": vigia_rodando})
 
     usada = 1 - m["memoria"]["disponivel"] / m["memoria"]["total"] if m["memoria"]["total"] else 0
     fila = sum(1 for r in estado["vivos"] if r["status"] != "in_progress")
     db.execute("INSERT OR REPLACE INTO amostras VALUES (?,?,?,?,?)",
-               (int(agora), m["carga"][0], round(usada, 4), jobs_rodando(), fila))
+               (int(agora), m["carga"][0], round(usada, 4), jobs_rodando() + vigia_rodando, fila))
     db.execute("DELETE FROM amostras WHERE ts < ?", (agora - AMOSTRAS_S,))
     estado["amostras"] = [list(x) for x in db.execute(
         "SELECT (ts / ?) * ?, MAX(carga), MAX(memoria), MAX(rodando), MAX(fila) FROM amostras "
