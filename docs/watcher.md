@@ -118,6 +118,12 @@ image:
 
 Logs: `journalctl -u cicd-vigia -f`, and each job's log at `http://<host>:8080/vigia/`.
 
+**On the dashboard.** Every change of state rewrites `/var/lib/cicd-painel/www/vigia/builds.json` (the
+last 300 builds) and the plain list at `/vigia/`. The dashboard's collector reads that file: the
+watcher's builds appear in "Agora", in the numbers and in the history as the workflow `cicd-vigia`
+([dashboard.md](dashboard.md#how-it-is-built)). A change to the fields of `builds.json` is a change
+to the dashboard too, and `tests/dashboard-watcher.test.mjs` is the ruler of that contract.
+
 ## Limits
 
 - **macOS and Windows jobs do not run here** (above).

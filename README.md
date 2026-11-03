@@ -76,7 +76,8 @@ What the machine looks like, measured read-only on 27/10/2026, is in
 | [cleanup/](cleanup/) | The prune timers and the disk guard (`cicd-disk-guard.sh`) |
 | [watcher/](watcher/) | The watcher: `vigia.py`, its unit, the example `repos.json`, `image/Dockerfile` and `instalar.sh` |
 | [host/](host/) | Host configuration that is not a service: Docker's `daemon.json`, the runner's sudoers drop-in, the weekly cleanup cron |
-| [tests/](tests/) | Rulers for the cleanup scripts: each runs a script against fakes and shows that its mutants are caught |
+| [tests/](tests/) | Rulers for the cleanup scripts and the dashboard's collector: each runs the real code against fakes and shows that its mutants are caught |
+| [deploy.sh](deploy.sh) | Updates the machine from its clone at `/srv/cicd`: the rulers first, then the installers of what changed ([operations.md](docs/operations.md#updating-what-is-installed)) |
 | [.continue/](.continue/README.md) | **The queue** — what is still open, and whose call it is |
 | [CHANGELOG.md](CHANGELOG.md) | **The history** — newest first; each heading is a commit subject |
 | [version.md](version.md) | **The single authority on the version.** Every bump becomes a tag and a published Release |

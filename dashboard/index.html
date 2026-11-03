@@ -286,7 +286,13 @@ footer { max-width: 1360px; margin: 0 auto; padding: 0 20px 28px; color: var(--m
   function repoCurto(r) { return r && dono && r.startsWith(dono + '/') ? r.slice(dono.length + 1) : (r || '—'); }
   function cor(r) { return cores.get(r) || 'var(--off)'; }
   function dot(r) { const d = el('span', 'dot'); d.style.background = cor(r); return d; }
-  function urlRun(r) { return 'https://github.com/' + r.repo + '/actions/runs/' + r.id + (r.tentativa > 1 ? '/attempts/' + r.tentativa : ''); }
+  // A negative id is a build of the watcher (cicd-vigia): its page is its log here, not a run on GitHub.
+  function urlRun(r) {
+    if (r.id < 0) return 'vigia/' + (r.log || '');
+    return 'https://github.com/' + r.repo + '/actions/runs/' + r.id + (r.tentativa > 1 ? '/attempts/' + r.tentativa : '');
+  }
+  // The watcher knows a pull request by its number only, not by its branch.
+  function ondeRodou(r) { return r.pr ? 'PR #' + r.pr + (r.branch ? ' · ' + r.branch : '') : r.branch + ' (' + (EVENTO[r.evento] || r.evento) + ')'; }
   function dataCurta(t) { const d = new Date(t * 1000); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0'); }
   function horaCurta(t) { const d = new Date(t * 1000); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
   function ha(t) { return 'há ' + dur(agora() - t); }
@@ -315,7 +321,7 @@ footer { max-width: 1360px; margin: 0 auto; padding: 0 20px 28px; color: var(--m
     const runs = j.runs.map((r, i) => ({
       i, id: r[0], repo: d.repos[r[1]], workflow: d.workflows[r[2]], evento: d.eventos[r[3]], ator: d.atores[r[4]],
       branch: d.branches[r[5]], pr: r[6], tentativa: r[7], criado: r[8], inicio: r[9] || r[8], fim: r[10],
-      veredito: d.conclusoes[r[11]], titulo: tt[i] || '', jobs: [],
+      veredito: d.conclusoes[r[11]], log: r[12] || null, titulo: tt[i] || '', jobs: [],
     }));
     const jobs = j.jobs.map(x => {
       const run = runs[x[0]];
@@ -334,6 +340,16 @@ footer { max-width: 1360px; margin: 0 auto; padding: 0 20px 28px; color: var(--m
       if (!m.has(k)) m.set(k, []);
       m.get(k).push(j.fim - j.inicio);
     });
+    // A running build of the watcher is one job, `act`, whatever jobs it runs: its typical length is the
+    // whole build's.
+    const vigia = new Map();
+    H.runs.forEach(r => {
+      if (r.id >= 0 || r.veredito !== 'success' || !r.fim) return;
+      const k = r.repo + '|' + r.workflow + '|act';
+      if (!vigia.has(k)) vigia.set(k, []);
+      vigia.get(k).push(r.fim - r.inicio);
+    });
+    vigia.forEach((v, k) => m.set(k, v));
     tipicos = new Map([...m].map(([k, v]) => [k, { med: pct(v, .5), p90: pct(v, .9), n: v.length }]));
   }
   function reposConhecidos() {
@@ -510,7 +526,7 @@ footer { max-width: 1360px; margin: 0 auto; padding: 0 20px 28px; color: var(--m
     const d = el('div', 'cab'), t = el('span', 'repo-tag');
     t.append(dot(run.repo), el('span', null, repoCurto(run.repo)));
     d.append(t, link(run.url, run.workflow + (run.tentativa > 1 ? ' · ' + run.tentativa + 'ª tentativa' : '')));
-    d.appendChild(el('span', 'muted', run.pr ? 'PR #' + run.pr + ' · ' + run.branch : run.branch + ' (' + (EVENTO[run.evento] || run.evento) + ')'));
+    d.appendChild(el('span', 'muted', ondeRodou(run)));
     if (run.titulo) d.appendChild(el('span', 'muted titulo', run.titulo));
     return d;
   }
@@ -524,7 +540,8 @@ footer { max-width: 1360px; margin: 0 auto; padding: 0 20px 28px; color: var(--m
       if (j.runner) nome.appendChild(el('span', 'muted', ' em ' + j.runner));
       linha.append(seloJob(j), nome);
       if (j.status === 'in_progress' && j.inicio) {
-        const passou = agora() - iso(j.inicio), tip = tipicos.get(run.repo + '|' + run.workflow + '|' + j.nome);
+        // A job of the watcher brings its typical length from the collector (read from its last logs).
+        const passou = agora() - iso(j.inicio), tip = tipicos.get(run.repo + '|' + run.workflow + '|' + j.nome) || j.tipico;
         linha.appendChild(el('span', 'num muted', dur(passou) + (tip ? ' de ~' + dur(tip.med) : '')));
         const pr = el('div', 'progresso'), i = el('i');
         let frac = null;
@@ -534,7 +551,7 @@ footer { max-width: 1360px; margin: 0 auto; padding: 0 20px 28px; color: var(--m
           pr.setAttribute('data-dica', 'Típico: ' + dur(tip.med) + ' (p90 ' + dur(tip.p90) + ', ' + plural(tip.n, 'execução verde', 'execuções verdes') + ')');
         } else if (j.passo && j.passo.total) frac = j.passo.numero / j.passo.total;
         if (frac != null) { i.style.width = Math.min(100, frac * 100).toFixed(1) + '%'; pr.appendChild(i); linha.appendChild(pr); }
-        if (j.passo) linha.appendChild(el('div', 'passo', 'passo ' + j.passo.numero + '/' + j.passo.total + ': ' + j.passo.nome));
+        if (j.passo) linha.appendChild(el('div', 'passo', 'passo ' + j.passo.numero + (j.passo.total ? '/' + j.passo.total : '') + ': ' + j.passo.nome));
       } else linha.appendChild(el('span'));
       b.appendChild(linha);
     });
@@ -563,7 +580,8 @@ footer { max-width: 1360px; margin: 0 auto; padding: 0 20px 28px; color: var(--m
       const st = x.status == null ? 'nd' : x.status !== 'online' ? 'offline' : x.ocupado ? 'ocupado' : 'livre';
       const r = el('div', 'rn'), at = emUso.get(x.nome);
       r.append(el('span', 'estado ' + st), el('span', 'nome', x.nome), el('span', 'muted', TXT[st]));
-      r.appendChild(el('div', 'det', repoCurto(x.repo) + (x.local ? '' : ' · outra máquina') +
+      r.appendChild(el('div', 'det', (x.repo ? repoCurto(x.repo) : 'act, os repositórios do vigia') + (x.local ? '' : ' · outra máquina') +
+        (x.rodando > 1 ? ' · ' + fmt(x.rodando) + ' builds' : '') +
         (at ? ' · ' + at.j.nome + ' (' + at.run.workflow + ') ' + ha(iso(at.j.inicio)) : '')));
       c.appendChild(r);
     });
@@ -879,7 +897,7 @@ footer { max-width: 1360px; margin: 0 auto; padding: 0 20px 28px; color: var(--m
         tj.append(s, ' ');
       });
       tr.appendChild(tj);
-      tr.appendChild(el('td', 'col-opc muted', r.pr ? 'PR #' + r.pr + ' · ' + r.branch : r.branch + ' (' + (EVENTO[r.evento] || r.evento) + ')'));
+      tr.appendChild(el('td', 'col-opc muted', ondeRodou(r)));
       tr.appendChild(el('td', 'n', r.fim ? dur(r.fim - r.inicio) : '—'));
       tr.appendChild(el('td', 'n col-opc muted', ha(r.fim || r.inicio)));
       tb.appendChild(tr);

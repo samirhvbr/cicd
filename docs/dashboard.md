@@ -43,6 +43,44 @@ writes its logs to `/var/lib/cicd-painel/www/vigia/`, which is why the page serv
 file (`gitHubUrl`). A new runner appears by itself; its runs appear once the token reaches its
 repository.
 
+**The watcher is the second source.** Since 26/10/2026 GitHub Actions hands no job to the runners
+(the account is locked for billing) and the CI runs in the [watcher](watcher.md). Until 0.1.1 the
+page did not know: on 28/10 it said *"Nada rodando, fila vazia"* while the watcher was building three
+pull requests, and the 13 runners read "livre" for good. The collector now reads the watcher's
+`www/vigia/builds.json` on every snapshot, with no token needed:
+
+- a running build is a live run of the workflow `cicd-vigia`, linked to its log, **with its jobs
+  read from that log**: act writes `[<workflow>/<job>] ⭐ Run <step>` when a step starts,
+  `✅ Success - <step> [<duration>]` when it ends and `🏁 Job succeeded|failed` when the job does.
+  So each job shows its step ("passo 16/20: Testes"), a progress bar and "Xm de ~Ym", as a GitHub
+  job did. The total steps and the typical length come from the same job in the repository's last
+  five finished logs where it succeeded. A job's length is the sum of its steps' durations, because
+  the log has no timestamps. Each finished log is read once and cached in `meta`;
+- a build the watcher marks `rodando` whose log does not exist yet is shown **queued**: it is
+  waiting for a same-named job of another build to release its lock (measured on 28/10: #29 sat
+  "rodando" for 45 minutes behind #28's `CI/test`), or for its clone. A `na fila` build is queued
+  too;
+- the log has no timestamps, so a build starts, for the page, at the first snapshot that saw its
+  log, within 30 s of the real start. A build already under way when the collector first sees it
+  (right after an install) starts at "now minus its finished steps", which is short of the truth
+  while a long step runs;
+- a finished build is recorded once: `passou` → success, `falhou`/`erro` → failure,
+  `interrompido` → cancelled. `ignorado` and `conflito` ran nothing and are not recorded. Its jobs
+  come from the build's `detalhe` (`provas=success, windows=failure`), and the expected-red rule
+  below applies to them;
+- the watcher is listed with the runners as `cicd-vigia`, busy while it builds, and its running
+  builds count in the load samples.
+
+Its runs share the tables with GitHub's under **negative ids** (`-<build id>`). A GitHub run id is
+positive, so the two cannot collide, and the page links a negative id to `/vigia/<log>` instead of
+github.com. The `log` column of `runs` exists for these runs only; an older database gets it on the
+first snapshot.
+
+**What the watcher's numbers cannot say:** it keeps no time per job, so each job of a build carries
+the whole build's start and end. Runner hours and job durations of a watcher build are therefore
+approximations (act runs a build's independent jobs in parallel, so the error is small but
+present), and there is no queue wait: the build's start is when it was queued.
+
 **The history.** GitHub keeps no cheap history to ask again, so the collector records every
 finished run once, with its jobs: runner, result, and when each was queued, started and finished.
 It starts on 28/09/2026, the day the first runner went live. Once an hour a paginated pass records
